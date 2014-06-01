@@ -4,11 +4,11 @@
 
 # Apollo STOMP Broker Configuration
 # FIXME - Replace 99999 with your ID
-stompQueueName: /queue/99999.book.orders
+stompQueueName: /queue/36451.book.orders
 
 # Library B subscribes to the Computer category ONLY!
 # FIXME - Replace 99999 with your ID
-stompTopicName: /topic/99999.book.computer
+stompTopicName: /topic/36451.book.computer
 
 # Name for library B
 libraryName: library-b
@@ -16,7 +16,7 @@ libraryName: library-b
 # TODO: Apollo STOMP Broker URL and login
 #apolloUser: "admin"
 #apolloPassword: "password"
-#apolloHost: "54.215.210.214"
+#apolloHost: "54.215.133.131"
 #apolloPort: 61613
 
 # HTTP-specific options.

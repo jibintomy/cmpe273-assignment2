@@ -1,5 +1,6 @@
 package edu.sjsu.cmpe.library.domain;
 
+import java.net.MalformedURLException;
 import java.net.URL;
 
 import javax.validation.constraints.NotNull;
@@ -126,6 +127,20 @@ public class Book {
      */
     public void setStatus(Status status) {
 	this.status = status;
+    }
+    
+ public void addNewBook (String newBook){
+    	
+    	String[] bookDetails = newBook.replace(":/", "~/").split(":");
+    	this.isbn=Integer.parseInt(bookDetails[0]);
+    	this.title=bookDetails[1];
+    	this.category=bookDetails[2];
+    	String url = bookDetails[3].replace("~/", ":/");
+    	try {
+			this.coverimage=new URL(url);
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+		}
     }
 
 }

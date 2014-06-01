@@ -1,5 +1,7 @@
 package edu.sjsu.cmpe.library.api.resources;
 
+
+import javax.jms.JMSException;
 import javax.validation.Valid;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -14,15 +16,30 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
+
+
+import org.fusesource.stomp.jms.StompJmsConnectionFactory;
+
 import com.yammer.dropwizard.jersey.params.LongParam;
 import com.yammer.metrics.annotation.Timed;
 
 import edu.sjsu.cmpe.library.domain.Book;
 import edu.sjsu.cmpe.library.domain.Book.Status;
+import edu.sjsu.cmpe.library.domain.BookOrder;
 import edu.sjsu.cmpe.library.dto.BookDto;
 import edu.sjsu.cmpe.library.dto.BooksDto;
 import edu.sjsu.cmpe.library.dto.LinkDto;
 import edu.sjsu.cmpe.library.repository.BookRepositoryInterface;
+
+import javax.jms.Connection;
+import javax.jms.DeliveryMode;
+import javax.jms.Destination;
+import javax.jms.MessageProducer;
+import javax.jms.Session;
+import javax.jms.TextMessage;
+
+import org.fusesource.stomp.jms.StompJmsDestination;
+
 
 @Path("/v1/books")
 @Produces(MediaType.APPLICATION_JSON)
@@ -30,6 +47,8 @@ import edu.sjsu.cmpe.library.repository.BookRepositoryInterface;
 public class BookResource {
     /** bookRepository instance */
     private final BookRepositoryInterface bookRepository;
+    private String libraryName;
+    
 
     /**
      * BookResource constructor
@@ -37,10 +56,23 @@ public class BookResource {
      * @param bookRepository
      *            a BookRepository instance
      */
-    public BookResource(BookRepositoryInterface bookRepository) {
+    public BookResource(BookRepositoryInterface bookRepository , String libraryName) {
 	this.bookRepository = bookRepository;
+	this.libraryName = libraryName;
     }
 
+    private static String env(String key, String defaultValue) {
+		String rc = System.getenv(key);
+		if( rc== null ) {
+		    return defaultValue;
+		}
+		return rc;
+    }
+    
+    private static String arg(int index, String defaultValue) {
+	    return defaultValue;
+    }
+    
     @GET
     @Path("/{isbn}")
     @Timed(name = "view-book")
@@ -85,16 +117,23 @@ public class BookResource {
     @Path("/{isbn}")
     @Timed(name = "update-book-status")
     public Response updateBookStatus(@PathParam("isbn") LongParam isbn,
-	    @DefaultValue("available") @QueryParam("status") Status status) {
+	    @DefaultValue("available") @QueryParam("status") Status status) throws JMSException {
 	Book book = bookRepository.getBookByISBN(isbn.get());
+	
+	//update status
 	book.setStatus(status);
-
+	
+	if (status.equals(Status.lost)){
+		createNewBookOrder(isbn);
+	}	
+	
 	BookDto bookResponse = new BookDto(book);
 	String location = "/books/" + book.getIsbn();
 	bookResponse.addLink(new LinkDto("view-book", location, "GET"));
 
 	return Response.status(200).entity(bookResponse).build();
     }
+
 
     @DELETE
     @Path("/{isbn}")
@@ -106,5 +145,37 @@ public class BookResource {
 
 	return bookResponse;
     }
+    
+    public void createNewBookOrder(LongParam isbn) throws JMSException {
+    	String user = env("APOLLO_USER", "admin");
+    	String password = env("APOLLO_PASSWORD", "password");
+    	String host = env("APOLLO_HOST", "54.215.133.131");
+    	int port = Integer.parseInt(env("APOLLO_PORT", "61613"));
+    	String queue = "/queue/36451.book.orders";
+    	String destination = arg(0, queue);
+
+    	StompJmsConnectionFactory factory = new StompJmsConnectionFactory();
+    	factory.setBrokerURI("tcp://" + host + ":" + port);
+
+    	Connection connection = factory.createConnection(user, password);
+    	connection.start();
+    	Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+    	Destination dest = new StompJmsDestination(destination);
+    	MessageProducer producer = session.createProducer(dest);
+    	producer.setDeliveryMode(DeliveryMode.NON_PERSISTENT);
+
+    	System.out.println("Sending messages to " + queue + "...");
+    	BookOrder orderMsg = new BookOrder();
+    	orderMsg.setIsbn(isbn);
+    	orderMsg.setLibraryName(libraryName);   
+    	String data = orderMsg.getLibraryName()+":"+orderMsg.getIsbn();
+    	
+    	TextMessage msg = session.createTextMessage(data);
+    	msg.setLongProperty("id", System.currentTimeMillis());
+    	producer.send(msg);    	
+    	connection.close();
+    }
+
+    
 }
 
